@@ -6,21 +6,23 @@ import requests
 BOT_TOKEN = "8736143167:AAE_v_fdmk0TlF6HfGaZjCrtdLgIjOC42vQ"
 ADMIN_ID = 1043945034
 
-# === ВАШ РАБОЧИЙ ПРОКСИ ===
+# ПРОКСИ (ваш рабочий)
 PROXY_URL = "socks5://yP7CeJ:ZeBeFBEY8Uv8@bproxy.site:16185"
-# ===========================
+# ===============================
 
-# Настройка прокси для сессии
+# Настройка прокси
 session = requests.Session()
 session.proxies = {
     'http': PROXY_URL,
     'https': PROXY_URL
 }
 
-# Передаём прокси в бота
 bot = telebot.TeleBot(BOT_TOKEN, request=session)
 
-# ------------------- МЕНЮ С КНОПКАМИ -------------------
+# Удаляем вебхук, используем polling
+bot.remove_webhook()
+
+# ------------------- МЕНЮ -------------------
 @bot.message_handler(commands=['start'])
 def start(message):
     markup = InlineKeyboardMarkup(row_width=2)
@@ -51,7 +53,7 @@ def handle_buttons(call):
             message_id=call.message.message_id,
             parse_mode="Markdown"
         )
-        bot.send_message(ADMIN_ID, f"Пользователь {call.from_user.first_name} начал бронирование.")
+        bot.send_message(ADMIN_ID, f"🔔 Пользователь {call.from_user.first_name} начал бронирование.")
 
     elif call.data == "my_requests":
         bot.edit_message_text(
@@ -78,5 +80,5 @@ def handle_buttons(call):
         )
 
 # ------------------- ЗАПУСК -------------------
-print("Бот запущен с SOCKS5 прокси...")
+print("✅ Бот запущен с прокси и слушает сообщения...")
 bot.infinity_polling()

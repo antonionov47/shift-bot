@@ -1,25 +1,12 @@
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-import requests
 
 # ========== НАСТРОЙКИ ==========
 BOT_TOKEN = "8736143167:AAE_v_fdmk0TlF6HfGaZjCrtdLgIjOC42vQ"
 ADMIN_ID = 1043945034
-
-# ПРОКСИ (ваш рабочий)
-PROXY_URL = "socks5://yP7CeJ:ZeBeFBEY8Uv8@bproxy.site:16185"
 # ===============================
 
-# Настройка прокси
-session = requests.Session()
-session.proxies = {
-    'http': PROXY_URL,
-    'https': PROXY_URL
-}
-
-bot = telebot.TeleBot(BOT_TOKEN, request=session)
-
-# Удаляем вебхук, используем polling
+bot = telebot.TeleBot(BOT_TOKEN)
 bot.remove_webhook()
 
 # ------------------- МЕНЮ -------------------
@@ -80,5 +67,5 @@ def handle_buttons(call):
         )
 
 # ------------------- ЗАПУСК -------------------
-print("✅ Бот запущен с прокси и слушает сообщения...")
+print("✅ Бот успешно запущен!")
 bot.infinity_polling()

@@ -3,7 +3,6 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeybo
 from datetime import datetime, timedelta
 import json
 import os
-import calendar as cal
 
 BOT_TOKEN = "8736143167:AAE_v_fdmk0TlF6HfGaZjCrtdLgIjOC42vQ"
 ADMIN_ID = 1043945034
@@ -25,63 +24,14 @@ def save_requests():
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(requests, f, ensure_ascii=False, indent=2)
 
-def get_month_name(month):
-    months = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", 
-              "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
-    return months[month - 1]
-
-def create_calendar(year, month, selected_date=None):
-    markup = InlineKeyboardMarkup(row_width=7)
-    
-    # Заголовок с месяцем и годом + кнопки навигации
-    now = datetime.now()
-    current_year = now.year
-    current_month = now.month
-    today = now.day
-    
-    nav_buttons = [
-        InlineKeyboardButton("◀️", callback_data=f"cal_prev_{year}_{month}"),
-        InlineKeyboardButton(f"{get_month_name(month)} {year}", callback_data="ignore"),
-        InlineKeyboardButton("▶️", callback_data=f"cal_next_{year}_{month}")
-    ]
-    markup.row(*nav_buttons)
-    
-    # Дни недели
-    weekdays = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
-    markup.row(*[InlineKeyboardButton(day, callback_data="ignore") for day in weekdays])
-    
-    # Получаем первый день месяца и количество дней
-    first_day = datetime(year, month, 1)
-    start_weekday = first_day.weekday()
-    days_in_month = cal.monthrange(year, month)[1]
-    
-    # Пустые ячейки до первого дня
-    row = []
-    for _ in range(start_weekday):
-        row.append(InlineKeyboardButton(" ", callback_data="ignore"))
-    
-    # Дни месяца
-    for day in range(1, days_in_month + 1):
-        is_past = (year < current_year) or (year == current_year and month < current_month) or (year == current_year and month == current_month and day < today)
-        
-        if is_past:
-            # Прошедшие дни — заблокированы
-            row.append(InlineKeyboardButton("🔒", callback_data="ignore"))
-        else:
-            # Доступные дни
-            row.append(InlineKeyboardButton(str(day), callback_data=f"date_{year}_{month}_{day}"))
-        
-        if len(row) == 7:
-            markup.row(*row)
-            row = []
-    
-    # Заполняем последнюю строку
-    if row:
-        while len(row) < 7:
-            row.append(InlineKeyboardButton(" ", callback_data="ignore"))
-        markup.row(*row)
-    
-    return markup
+# Простой календарь — только доступные дни (сегодня + 14 дней)
+def get_available_dates():
+    dates = []
+    today = datetime.now().date()
+    for i in range(14):
+        date = today + timedelta(days=i)
+        dates.append(date.strftime("%d.%m.%Y"))
+    return dates
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -95,7 +45,6 @@ def start(message):
     bot.send_message(
         message.chat.id,
         "✨ *Добро пожаловать в сервис бронирования смен!* ✨\n\n"
-        "Я помогу вам быстро и удобно забронировать рабочую смену.\n\n"
         "👇 *Выберите действие:*",
         reply_markup=markup,
         parse_mode="Markdown"
@@ -107,13 +56,14 @@ def handle_menu(message):
     user_id = message.from_user.id
     
     if text == "📅 Забронировать смену":
-        now = datetime.now()
-        markup = create_calendar(now.year, now.month)
+        dates = get_available_dates()
+        markup = InlineKeyboardMarkup(row_width=2)
+        for date in dates:
+            markup.add(InlineKeyboardButton(date, callback_data=f"date_{date}"))
         bot.send_message(
             message.chat.id,
-            "📅 *Выберите дату смены*\n\n"
-            "🔒 — прошлые даты (недоступны)\n"
-            "◀️ ▶️ — переключение месяцев",
+            "📅 *Выберите дату смены:*\n\n"
+            "Доступны даты на ближайшие 14 дней",
             reply_markup=markup,
             parse_mode="Markdown"
         )
@@ -127,7 +77,7 @@ def handle_menu(message):
         msg = "📋 *Ваши заявки:*\n\n"
         for rid, r in user_requests.items():
             if r["status"] == "pending":
-                status = "⏳ Ожидает подтверждения"
+                status = "⏳ Ожидает"
                 emoji = "⏳"
             elif r["status"] == "approved":
                 status = "✅ Подтверждена"
@@ -144,8 +94,7 @@ def handle_menu(message):
     elif text == "📞 Поддержка":
         bot.send_message(
             message.chat.id,
-            "📞 *Поддержка*\n\n"
-            "По всем вопросам обращайтесь к администратору.",
+            "📞 *Поддержка*\n\nПо всем вопросам обращайтесь к администратору.",
             parse_mode="Markdown"
         )
     
@@ -154,69 +103,30 @@ def handle_menu(message):
             message.chat.id,
             "ℹ️ *Помощь*\n\n"
             "1️⃣ Нажмите «Забронировать смену»\n"
-            "2️⃣ Выберите удобную дату в календаре\n"
-            "3️⃣ Выберите время начала смены\n"
-            "4️⃣ Выберите время окончания смены\n"
-            "5️⃣ Дождитесь подтверждения администратора\n\n"
-            "Статус заявок можно посмотреть в «Мои заявки»",
+            "2️⃣ Выберите удобную дату\n"
+            "3️⃣ Выберите время начала\n"
+            "4️⃣ Выберите время окончания\n"
+            "5️⃣ Дождитесь подтверждения",
             parse_mode="Markdown"
         )
     else:
         bot.send_message(message.chat.id, "❌ *Используйте кнопки меню*", parse_mode="Markdown")
 
-# Навигация по календарю
-@bot.callback_query_handler(func=lambda call: call.data.startswith("cal_prev_") or call.data.startswith("cal_next_"))
-def calendar_navigation(call):
-    _, action, year, month = call.data.split("_")
-    year, month = int(year), int(month)
-    
-    if action == "prev":
-        if month == 1:
-            month = 12
-            year -= 1
-        else:
-            month -= 1
-    else:
-        if month == 12:
-            month = 1
-            year += 1
-        else:
-            month += 1
-    
-    markup = create_calendar(year, month)
-    bot.edit_message_text(
-        "📅 *Выберите дату смены*",
-        chat_id=call.message.chat.id,
-        message_id=call.message.message_id,
-        reply_markup=markup,
-        parse_mode="Markdown"
-    )
-    bot.answer_callback_query(call.id)
-
 # Выбор даты
 @bot.callback_query_handler(func=lambda call: call.data.startswith("date_"))
 def select_date(call):
-    _, year, month, day = call.data.split("_")
-    year, month, day = int(year), int(month), int(day)
-    date_str = f"{day:02d}.{month:02d}.{year}"
-    
-    # Сохраняем дату во временном хранилище
+    date = call.data.split("_")[1]
     user_id = call.from_user.id
-    if user_id not in temp_data:
-        temp_data[user_id] = {}
-    temp_data[user_id]["date"] = date_str
-    temp_data[user_id]["year"] = year
-    temp_data[user_id]["month"] = month
-    temp_data[user_id]["day"] = day
     
-    # Кнопки для выбора времени начала (с 8:00 до 22:00)
+    temp_data[user_id] = {"date": date}
+    
     markup = InlineKeyboardMarkup(row_width=3)
     for hour in range(8, 23):
         markup.add(InlineKeyboardButton(f"{hour:02d}:00", callback_data=f"start_{hour:02d}:00"))
     
     bot.edit_message_text(
-        f"📅 *Выбрана дата:* {date_str}\n\n"
-        f"🕐 *Выберите время начала смены:*",
+        f"📅 *Дата:* {date}\n\n"
+        f"🕐 *Выберите время начала:*",
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,
         reply_markup=markup,
@@ -226,14 +136,13 @@ def select_date(call):
 
 # Выбор времени начала
 @bot.callback_query_handler(func=lambda call: call.data.startswith("start_"))
-def select_start_time(call):
+def select_start(call):
     start_time = call.data.split("_")[1]
     user_id = call.from_user.id
     
     temp_data[user_id]["start"] = start_time
     start_hour = int(start_time.split(":")[0])
     
-    # Кнопки для выбора времени окончания (от start_hour+1 до 23)
     markup = InlineKeyboardMarkup(row_width=3)
     for hour in range(start_hour + 1, 24):
         markup.add(InlineKeyboardButton(f"{hour:02d}:00", callback_data=f"end_{hour:02d}:00"))
@@ -241,7 +150,7 @@ def select_start_time(call):
     bot.edit_message_text(
         f"📅 *Дата:* {temp_data[user_id]['date']}\n"
         f"🕐 *Начало:* {start_time}\n\n"
-        f"🕑 *Выберите время окончания смены:*",
+        f"🕑 *Выберите время окончания:*",
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,
         reply_markup=markup,
@@ -251,7 +160,7 @@ def select_start_time(call):
 
 # Выбор времени окончания и создание заявки
 @bot.callback_query_handler(func=lambda call: call.data.startswith("end_"))
-def select_end_time(call):
+def select_end(call):
     end_time = call.data.split("_")[1]
     user_id = call.from_user.id
     user_name = call.from_user.first_name
@@ -274,19 +183,13 @@ def select_end_time(call):
     }
     save_requests()
     
-    # Уведомление пользователю
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("📋 Мои заявки", callback_data="my_requests"))
-    
     bot.edit_message_text(
-        f"✅ *Заявка #{rid} успешно отправлена!*\n\n"
-        f"📅 *Дата:* {date}\n"
-        f"🕐 *Время:* {start} - {end_time}\n\n"
-        f"⏳ Ожидайте подтверждения администратора.\n\n"
-        f"Статус заявки можно отследить в разделе «Мои заявки».",
+        f"✅ *Заявка #{rid} отправлена!*\n\n"
+        f"📅 {date}\n"
+        f"🕐 {start} - {end_time}\n\n"
+        f"Ожидайте подтверждения.",
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,
-        reply_markup=markup,
         parse_mode="Markdown"
     )
     
@@ -301,44 +204,12 @@ def select_end_time(call):
         f"🔔 *НОВАЯ ЗАЯВКА #{rid}*\n\n"
         f"👤 *Сотрудник:* {user_name}\n"
         f"📅 *Дата:* {date}\n"
-        f"🕐 *Время:* {start} - {end_time}\n"
-        f"🕒 *Создана:* {datetime.now().strftime('%d.%m.%Y %H:%M')}",
+        f"🕐 *Время:* {start} - {end_time}",
         reply_markup=admin_markup,
         parse_mode="Markdown"
     )
     
     del temp_data[user_id]
-    bot.answer_callback_query(call.id)
-
-# Просмотр заявок через кнопку
-@bot.callback_query_handler(func=lambda call: call.data == "my_requests")
-def show_requests(call):
-    user_id = call.from_user.id
-    user_requests = {k: v for k, v in requests.items() if v["user_id"] == user_id}
-    
-    if not user_requests:
-        bot.edit_message_text(
-            "📋 *У вас пока нет заявок*",
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            parse_mode="Markdown"
-        )
-    else:
-        msg = "📋 *Ваши заявки:*\n\n"
-        for rid, r in user_requests.items():
-            if r["status"] == "pending":
-                status = "⏳ Ожидает"
-            elif r["status"] == "approved":
-                status = "✅ Подтверждена"
-            else:
-                status = "❌ Отклонена"
-            msg += f"*#{rid}* | {r['date']} | {r['start']}-{r['end']} | {status}\n"
-        bot.edit_message_text(
-            msg,
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            parse_mode="Markdown"
-        )
     bot.answer_callback_query(call.id)
 
 # Обработка действий администратора
@@ -359,31 +230,26 @@ def admin_decision(call):
         bot.send_message(
             req["user_id"],
             f"✅ *СМЕНА ПОДТВЕРЖДЕНА!* 🎉\n\n"
-            f"📅 *Дата:* {req['date']}\n"
-            f"🕐 *Время:* {req['start']} - {req['end']}\n\n"
-            f"Желаем продуктивного рабочего дня! 💪",
+            f"📅 {req['date']}\n"
+            f"🕐 {req['start']} - {req['end']}\n\n"
+            f"Хорошего рабочего дня!",
             parse_mode="Markdown"
         )
-        
         bot.edit_message_text(
             f"✅ *Заявка #{rid} подтверждена*",
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
             parse_mode="Markdown"
         )
-    
     else:
         req["status"] = "rejected"
         save_requests()
         
         bot.send_message(
             req["user_id"],
-            f"❌ *СМЕНА ОТКЛОНЕНА*\n\n"
-            f"📅 *Дата:* {req['date']}\n\n"
-            f"Попробуйте выбрать другое время.",
+            f"❌ *СМЕНА ОТКЛОНЕНА*\n\n📅 {req['date']}\n\nПопробуйте другую дату.",
             parse_mode="Markdown"
         )
-        
         bot.edit_message_text(
             f"❌ *Заявка #{rid} отклонена*",
             chat_id=call.message.chat.id,
@@ -393,10 +259,5 @@ def admin_decision(call):
     
     bot.answer_callback_query(call.id)
 
-# Обработка игнорируемых callback (пустые кнопки)
-@bot.callback_query_handler(func=lambda call: call.data == "ignore")
-def ignore_callback(call):
-    bot.answer_callback_query(call.id)
-
-print("✅ Бот успешно запущен!")
+print("✅ Бот запущен!")
 bot.infinity_polling()

@@ -14,7 +14,6 @@ def start(message):
     btn3 = KeyboardButton("📞 Поддержка")
     btn4 = KeyboardButton("ℹ️ Помощь")
     markup.add(btn1, btn2, btn3, btn4)
-    
     bot.send_message(message.chat.id, "✨ Добро пожаловать! ✨\n\n👇 Выбери действие:", reply_markup=markup)
 
 @bot.message_handler(func=lambda message: True)

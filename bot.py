@@ -3,6 +3,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeybo
 from datetime import datetime, timedelta
 import json
 import os
+import calendar as cal
 
 BOT_TOKEN = "8736143167:AAE_v_fdmk0TlF6HfGaZjCrtdLgIjOC42vQ"
 ADMIN_ID = 1043945034
@@ -24,14 +25,56 @@ def save_requests():
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(requests, f, ensure_ascii=False, indent=2)
 
-# Простой календарь — только доступные дни (сегодня + 14 дней)
-def get_available_dates():
-    dates = []
-    today = datetime.now().date()
-    for i in range(14):
-        date = today + timedelta(days=i)
-        dates.append(date.strftime("%d.%m.%Y"))
-    return dates
+def get_month_name(month):
+    months = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", 
+              "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"]
+    return months[month - 1]
+
+def create_calendar():
+    now = datetime.now()
+    year = now.year
+    month = now.month
+    today = now.day
+    
+    markup = InlineKeyboardMarkup(row_width=7)
+    
+    # Заголовок с месяцем и годом
+    markup.row(InlineKeyboardButton(f"{get_month_name(month)} {year}", callback_data="ignore"))
+    
+    # Дни недели
+    weekdays = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    markup.row(*[InlineKeyboardButton(day, callback_data="ignore") for day in weekdays])
+    
+    # Получаем первый день месяца и количество дней
+    first_day = datetime(year, month, 1)
+    start_weekday = first_day.weekday()
+    days_in_month = cal.monthrange(year, month)[1]
+    
+    # Пустые ячейки до первого дня
+    row = []
+    for _ in range(start_weekday):
+        row.append(InlineKeyboardButton(" ", callback_data="ignore"))
+    
+    # Дни месяца
+    for day in range(1, days_in_month + 1):
+        if day < today:
+            # Прошедшие дни — заблокированы
+            row.append(InlineKeyboardButton("🔒", callback_data="ignore"))
+        else:
+            # Доступные дни
+            row.append(InlineKeyboardButton(str(day), callback_data=f"date_{year}_{month}_{day}"))
+        
+        if len(row) == 7:
+            markup.row(*row)
+            row = []
+    
+    # Заполняем последнюю строку
+    if row:
+        while len(row) < 7:
+            row.append(InlineKeyboardButton(" ", callback_data="ignore"))
+        markup.row(*row)
+    
+    return markup
 
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -56,14 +99,11 @@ def handle_menu(message):
     user_id = message.from_user.id
     
     if text == "📅 Забронировать смену":
-        dates = get_available_dates()
-        markup = InlineKeyboardMarkup(row_width=2)
-        for date in dates:
-            markup.add(InlineKeyboardButton(date, callback_data=f"date_{date}"))
+        markup = create_calendar()
         bot.send_message(
             message.chat.id,
-            "📅 *Выберите дату смены:*\n\n"
-            "Доступны даты на ближайшие 14 дней",
+            "📅 *Выберите дату смены*\n\n"
+            "🔒 — прошлые даты (недоступны)",
             reply_markup=markup,
             parse_mode="Markdown"
         )
@@ -103,7 +143,7 @@ def handle_menu(message):
             message.chat.id,
             "ℹ️ *Помощь*\n\n"
             "1️⃣ Нажмите «Забронировать смену»\n"
-            "2️⃣ Выберите удобную дату\n"
+            "2️⃣ Выберите удобную дату в календаре\n"
             "3️⃣ Выберите время начала\n"
             "4️⃣ Выберите время окончания\n"
             "5️⃣ Дождитесь подтверждения",
@@ -115,17 +155,19 @@ def handle_menu(message):
 # Выбор даты
 @bot.callback_query_handler(func=lambda call: call.data.startswith("date_"))
 def select_date(call):
-    date = call.data.split("_")[1]
-    user_id = call.from_user.id
+    _, year, month, day = call.data.split("_")
+    year, month, day = int(year), int(month), int(day)
+    date_str = f"{day:02d}.{month:02d}.{year}"
     
-    temp_data[user_id] = {"date": date}
+    user_id = call.from_user.id
+    temp_data[user_id] = {"date": date_str}
     
     markup = InlineKeyboardMarkup(row_width=3)
     for hour in range(8, 23):
         markup.add(InlineKeyboardButton(f"{hour:02d}:00", callback_data=f"start_{hour:02d}:00"))
     
     bot.edit_message_text(
-        f"📅 *Дата:* {date}\n\n"
+        f"📅 *Дата:* {date_str}\n\n"
         f"🕐 *Выберите время начала:*",
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,
@@ -257,6 +299,11 @@ def admin_decision(call):
             parse_mode="Markdown"
         )
     
+    bot.answer_callback_query(call.id)
+
+# Игнорирование пустых кнопок
+@bot.callback_query_handler(func=lambda call: call.data == "ignore")
+def ignore(call):
     bot.answer_callback_query(call.id)
 
 print("✅ Бот запущен!")
